@@ -1,0 +1,4 @@
+[libraries]
+androidx-annotation = { module = "androidx.annotation:annotation", version = "1.10.0" }
+lint-api = { module = "com.android.tools.lint:lint-api", version = "32.2.0" }
+lint-checks = { module = "com.android.tools.lint:lint-checks", version = "32.2.0" }
