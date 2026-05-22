@@ -12,7 +12,6 @@ import com.android.tools.lint.detector.api.SourceCodeScanner;
 import com.intellij.psi.JavaPsiFacade;
 import com.intellij.psi.PsiAnnotation;
 import com.intellij.psi.PsiClass;
-import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiExpression;
 import com.intellij.psi.PsiField;
 import com.intellij.psi.PsiLiteralExpression;
@@ -86,7 +85,7 @@ public final class SinceApiDetector extends Detector implements SourceCodeScanne
 
     @Override
     public List<Class<? extends UElement>> getApplicableUastTypes() {
-        return Arrays.asList(UCallExpression.class, USimpleNameReferenceExpression.class, UMethod.class);
+        return Arrays.asList(UCallExpression.class, USimpleNameReferenceExpression.class);
     }
 
     @Override
@@ -107,14 +106,6 @@ public final class SinceApiDetector extends Detector implements SourceCodeScanne
                     checkUsage(context, node, owner);
                 }
             }
-
-            @Override
-            public void visitMethod(@NotNull UMethod node) {
-                var superMethod = context.getEvaluator().getSuperMethod(node.getJavaPsi());
-                if (superMethod != null) {
-                    checkUsage(context, node, superMethod);
-                }
-            }
         };
     }
 
@@ -130,7 +121,8 @@ public final class SinceApiDetector extends Detector implements SourceCodeScanne
             return;
         }
         var requiredApi = getRequiredApi(owner);
-        if (requiredApi == null || requiredApi <= minApi || isGuarded(node, requiredApi)) {
+        if (requiredApi == null || requiredApi <= minApi || isGuarded(node, requiredApi) ||
+                isInsideSinceApiOverride(context, node, requiredApi)) {
             return;
         }
 
@@ -141,8 +133,32 @@ public final class SinceApiDetector extends Detector implements SourceCodeScanne
     }
 
     private int getMinApi(JavaContext context) {
-        var projectDir = context.getMainProject().getDir().toPath();
+        var projectDir = context.getProject().getDir().toPath();
         return minApiCache.computeIfAbsent(projectDir, SinceApiDetector::readMinApi);
+    }
+
+    private static boolean isInsideSinceApiOverride(JavaContext context, UElement node, int requiredApi) {
+        var current = node;
+        while (current != null) {
+            if (current instanceof UMethod method) {
+                var superMethod = getSuperMethod(context, method.getJavaPsi());
+                var enclosingRequiredApi = getRequiredApi(superMethod);
+                if (enclosingRequiredApi != null && enclosingRequiredApi >= requiredApi) {
+                    return true;
+                }
+            }
+            current = current.getUastParent();
+        }
+        return false;
+    }
+
+    private static PsiMethod getSuperMethod(JavaContext context, PsiMethod method) {
+        var superMethod = context.getEvaluator().getSuperMethod(method);
+        if (superMethod != null) {
+            return superMethod;
+        }
+        var superMethods = method.findSuperMethods();
+        return superMethods.length == 0 ? null : superMethods[0];
     }
 
     private static int readMinApi(Path projectDir) {
