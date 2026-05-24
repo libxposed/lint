@@ -1,0 +1,56 @@
+name: Publish Sonatype Snapshot
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish_annotation:
+        description: 'Publish annotation module'
+        type: boolean
+        default: true
+      publish_lint:
+        description: 'Publish lint module'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    if: github.event.inputs.publish_annotation == 'true' || github.event.inputs.publish_lint == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: 'recursive'
+        fetch-depth: 0
+
+    - name: set up JDK
+      uses: actions/setup-java@v4
+      with:
+        java-version: '21'
+        distribution: 'temurin'
+        cache: gradle
+
+    - name: Publish snapshot to Sonatype
+      run: |
+        echo 'org.gradle.caching=true' >> gradle.properties
+        echo 'org.gradle.parallel=true' >> gradle.properties
+        echo 'org.gradle.vfs.watch=true' >> gradle.properties
+        echo 'org.gradle.jvmargs=-Xmx2048m' >> gradle.properties
+        echo 'publishSnapshot=true' >> gradle.properties
+        TASKS=""
+        if [[ "${{ github.event.inputs.publish_annotation }}" == "true" ]]; then
+          TASKS="$TASKS publishAnnotationPublicationToSnapshotsRepository"
+        fi
+        if [[ "${{ github.event.inputs.publish_lint }}" == "true" ]]; then
+          TASKS="$TASKS publishLintPublicationToSnapshotsRepository"
+        fi
+        ./gradlew $TASKS
+        ./gradlew --stop
+      env:
+        ORG_GRADLE_PROJECT_signingKey: ${{ secrets.maven_pgp_signingKey }}
+        ORG_GRADLE_PROJECT_signingPassword: ${{ secrets.maven_pgp_signingPassword }}
+        ORG_GRADLE_PROJECT_sonatypeSnapshotsUsername: ${{ secrets.OSSRHUSERNAME }}
+        ORG_GRADLE_PROJECT_sonatypeSnapshotsPassword: ${{ secrets.OSSRHPASSWORD }}

@@ -23,12 +23,16 @@ tasks.jar {
     }
 }
 
+val version = "1.0.0"
+val publishSnapshot = providers.gradleProperty("publishSnapshot").map { it.toBoolean() }.getOrElse(false)
+val publishVersion = version + if (publishSnapshot) "-SNAPSHOT" else ""
+
 publishing {
     publications {
         register<MavenPublication>("lint") {
             artifactId = "lint"
             group = "io.github.libxposed"
-            version = "1.0.0"
+            version = publishVersion
             from(components["java"])
             pom {
                 name.set("lint")
@@ -57,6 +61,11 @@ publishing {
         maven {
             name = "ossrh"
             url = uri("https://ossrh-staging-api.central.sonatype.com/service/local/staging/deploy/maven2/")
+            credentials(PasswordCredentials::class)
+        }
+        maven {
+            name = "snapshots"
+            url = uri("https://central.sonatype.com/repository/maven-snapshots/")
             credentials(PasswordCredentials::class)
         }
         maven {
