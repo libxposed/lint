@@ -52,5 +52,5 @@ jobs:
       env:
         ORG_GRADLE_PROJECT_signingKey: ${{ secrets.maven_pgp_signingKey }}
         ORG_GRADLE_PROJECT_signingPassword: ${{ secrets.maven_pgp_signingPassword }}
-        ORG_GRADLE_PROJECT_sonatypeSnapshotsUsername: ${{ secrets.OSSRHUSERNAME }}
-        ORG_GRADLE_PROJECT_sonatypeSnapshotsPassword: ${{ secrets.OSSRHPASSWORD }}
+        ORG_GRADLE_PROJECT_snapshotsUsername: ${{ secrets.OSSRHUSERNAME }}
+        ORG_GRADLE_PROJECT_snapshotsPassword: ${{ secrets.OSSRHPASSWORD }}
