@@ -21,14 +21,18 @@ import com.intellij.psi.PsiNamedElement;
 
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.uast.UBinaryExpression;
+import org.jetbrains.uast.UBlockExpression;
 import org.jetbrains.uast.UCallExpression;
 import org.jetbrains.uast.UElement;
 import org.jetbrains.uast.UExpression;
+import org.jetbrains.uast.UExpressionList;
 import org.jetbrains.uast.UIfExpression;
 import org.jetbrains.uast.ULiteralExpression;
 import org.jetbrains.uast.UMethod;
 import org.jetbrains.uast.UReferenceExpression;
+import org.jetbrains.uast.UReturnExpression;
 import org.jetbrains.uast.USimpleNameReferenceExpression;
+import org.jetbrains.uast.UThrowExpression;
 import org.jetbrains.uast.UastBinaryOperator;
 
 import java.io.IOException;
@@ -275,7 +279,78 @@ public final class SinceApiDetector extends Detector implements SourceCodeScanne
                     return true;
                 }
             }
+            if (current instanceof UExpression expression && isGuardedByPriorExit(expression, requiredApi)) {
+                return true;
+            }
             current = current.getUastParent();
+        }
+        return false;
+    }
+
+    private static boolean isGuardedByPriorExit(UExpression expression, int requiredApi) {
+        var parent = expression.getUastParent();
+        if (parent instanceof UBlockExpression blockExpression) {
+            return hasPriorExitGuard(blockExpression.getExpressions(), expression, requiredApi);
+        }
+        if (parent instanceof UExpressionList expressionList) {
+            return hasPriorExitGuard(expressionList.getExpressions(), expression, requiredApi);
+        }
+        return false;
+    }
+
+    private static boolean hasPriorExitGuard(List<UExpression> expressions, UExpression expression, int requiredApi) {
+        var index = indexOfExpression(expressions, expression);
+        if (index < 0) {
+            return false;
+        }
+        for (var i = index - 1; i >= 0; i--) {
+            if (expressions.get(i) instanceof UIfExpression ifExpression &&
+                    ifExpressionExitsTowardSafeApi(ifExpression, requiredApi)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static int indexOfExpression(List<UExpression> expressions, UExpression expression) {
+        for (var i = 0; i < expressions.size(); i++) {
+            if (expressions.get(i) == expression) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private static boolean ifExpressionExitsTowardSafeApi(UIfExpression ifExpression, int requiredApi) {
+        var condition = ifExpression.getCondition();
+        return (branchAlwaysExits(ifExpression.getThenExpression()) &&
+                conditionFalseImpliesAtLeast(condition, requiredApi)) ||
+                (branchAlwaysExits(ifExpression.getElseExpression()) &&
+                        conditionImpliesAtLeast(condition, requiredApi));
+    }
+
+    private static boolean branchAlwaysExits(UElement element) {
+        if (element instanceof UReturnExpression || element instanceof UThrowExpression) {
+            return true;
+        }
+        if (element instanceof UBlockExpression blockExpression) {
+            return expressionsAlwaysExit(blockExpression.getExpressions());
+        }
+        if (element instanceof UExpressionList expressionList) {
+            return expressionsAlwaysExit(expressionList.getExpressions());
+        }
+        if (element instanceof UIfExpression ifExpression) {
+            return branchAlwaysExits(ifExpression.getThenExpression()) &&
+                    branchAlwaysExits(ifExpression.getElseExpression());
+        }
+        return false;
+    }
+
+    private static boolean expressionsAlwaysExit(List<UExpression> expressions) {
+        for (var expression : expressions) {
+            if (branchAlwaysExits(expression)) {
+                return true;
+            }
         }
         return false;
     }
@@ -329,6 +404,15 @@ public final class SinceApiDetector extends Detector implements SourceCodeScanne
         }
 
         var operator = binary.getOperator();
+        if (operator == UastBinaryOperator.LOGICAL_AND) {
+            return conditionFalseImpliesAtLeast(binary.getLeftOperand(), requiredApi) &&
+                    conditionFalseImpliesAtLeast(binary.getRightOperand(), requiredApi);
+        }
+        if (operator == UastBinaryOperator.LOGICAL_OR) {
+            return conditionFalseImpliesAtLeast(binary.getLeftOperand(), requiredApi) ||
+                    conditionFalseImpliesAtLeast(binary.getRightOperand(), requiredApi);
+        }
+
         var leftApi = isApiVersionExpression(binary.getLeftOperand());
         var rightApi = isApiVersionExpression(binary.getRightOperand());
         var leftConstant = getIntConstant(binary.getLeftOperand());
