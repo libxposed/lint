@@ -545,18 +545,16 @@ public final class SinceApiDetector extends Detector implements SourceCodeScanne
 
     private static boolean comparisonImpliesAtLeast(String operator, int value, int requiredApi) {
         return switch (operator) {
-            case ">=" -> value >= requiredApi;
+            case ">=", "==" -> value >= requiredApi;
             case ">" -> value + 1 >= requiredApi;
-            case "==" -> value >= requiredApi;
             default -> false;
         };
     }
 
     private static boolean reversedComparisonImpliesAtLeast(String operator, int value, int requiredApi) {
         return switch (operator) {
-            case "<=" -> value >= requiredApi;
+            case "<=", "==" -> value >= requiredApi;
             case "<" -> value + 1 >= requiredApi;
-            case "==" -> value >= requiredApi;
             default -> false;
         };
     }
